@@ -1,17 +1,12 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 )
-
-type contextKey string
-
-const ctxKeyRateLimitBypass contextKey = "rate_limit_bypass"
 
 // AuthMiddleware protects API routes with Bearer token authentication.
 func AuthMiddleware(token string) func(http.Handler) http.Handler {
@@ -52,7 +47,6 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 		limit:    limit,
 		window:   window,
 	}
-	// Background cleanup of old entries
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
@@ -108,18 +102,11 @@ func (rl *RateLimiter) Allow(ip string) bool {
 func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if this request has bypass (from auth middleware)
-			if _, ok := r.Context().Value(ctxKeyRateLimitBypass).(bool); ok {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			ip := realIP(r)
 			if !rl.Allow(ip) {
 				writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "请求过于频繁，请稍后再试"})
 				return
 			}
-
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -180,7 +167,6 @@ func realIP(r *http.Request) string {
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		return xri
 	}
-	// Strip port from RemoteAddr
 	addr := r.RemoteAddr
 	if idx := strings.LastIndex(addr, ":"); idx != -1 {
 		return addr[:idx]
@@ -196,10 +182,4 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.status = code
 	rw.ResponseWriter.WriteHeader(code)
-}
-
-// RateLimitBypass adds a bypass marker to the request context.
-func RateLimitBypass(r *http.Request) *http.Request {
-	ctx := context.WithValue(r.Context(), ctxKeyRateLimitBypass, true)
-	return r.WithContext(ctx)
 }

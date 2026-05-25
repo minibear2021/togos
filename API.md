@@ -320,6 +320,6 @@ API 端点 (`/api/*`) 不受速率限制（认证后）。
 
 ---
 
-## 配置 API 文档访问
+## 内置文档
 
-启动后访问 `http://<host>:<port>/api/docs` 可查看交互式 API 文档页面。根路径 `/` 自动重定向到 `/api/docs`。
+完整的 API 接口说明请参阅 [API.md](API.md) 文件。所有 API 端点均需 Bearer Token 认证。

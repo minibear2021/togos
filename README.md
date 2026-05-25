@@ -43,7 +43,7 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o togos.exe .
 LISTEN_ADDR=:9090 SITE_URL=https://share.example.com ./togos
 ```
 
-启动后访问 `http://localhost:8080/api/docs` 查看完整 API 文档。
+启动后在终端查看输出的管理员 Token，通过 API 管理文件和分享。
 
 ### 典型工作流
 
@@ -105,7 +105,7 @@ curl -H "Authorization: Bearer <token>" \
 | `POST` | `/s/:code` | 提交提取密码 |
 | `GET` | `/s/:code/download` | 下载文件（需先验证密码） |
 
-完整 API 文档和示例见 [API.md](API.md)，或访问 `/api/docs` 查看在线文档。
+完整 API 文档和示例见 [API.md](API.md)。
 
 ## 安全设计
 

@@ -12,7 +12,7 @@ CGO_ENABLED=0 go build -o togos .
 
 # 运行测试服务
 ./togos -data-dir /tmp/togos-test -listen :19876 -admin-token test
-# 然后访问 http://localhost:19876/api/docs
+# 通过 curl + API 测试功能
 
 # 交叉编译
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o togos .
@@ -25,7 +25,7 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o togos.exe .
 main.go         — 入口，路由，HTTP Server 配置
 config.go       — 环境变量 + flag 解析
 store.go        — SQLite 持久化，CRUD，密码哈希
-api.go          — REST API 处理器 + 嵌入式 API 文档 HTML
+api.go          — REST API 处理器
 share.go        — 公开分享页面 + 下载处理 + HTML 模板
 middleware.go   — 认证、速率限制、安全头、日志、recovery
 API.md          — 完整 API 接口文档
@@ -76,7 +76,6 @@ kill %1
 
 ### 修改代码注意事项
 - 编译必须 `CGO_ENABLED=0`，否则会尝试用 CGo SQLite 驱动
-- API 文档 HTML 常量 `apiDocsHTML` 在 `api.go` 末尾，需要与代码同步更新
 - 分享页 HTML 模板 `sharePageTemplate` 在 `share.go` 末尾
 - 修改路由分发逻辑时，注意 `/api/` pattern 在 Go 1.22+ 的语义
 - RateLimiter 使用 IP 作为 key，清理协程每 5 分钟运行一次

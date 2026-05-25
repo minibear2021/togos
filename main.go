@@ -23,16 +23,14 @@ func main() {
 	api := NewAPIHandler(store, cfg)
 	share := NewShareHandler(store, cfg)
 
-	// Rate limiter: 30 requests per minute for public endpoints
+	// Rate limiter: 30 requests per minute for public endpoints only
 	limiter := NewRateLimiter(30, time.Minute)
 
 	mux := http.NewServeMux()
 
-	// Public share routes (rate-limited, no auth)
-	mux.HandleFunc("/s/", func(w http.ResponseWriter, r *http.Request) {
+	// Public share routes — rate-limited
+	shareHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-
-		// Determine which handler to use
 		if strings.HasSuffix(path, "/download") || strings.Contains(path, "/download") {
 			share.ServeDownload(w, r)
 		} else if r.Method == http.MethodPost {
@@ -41,31 +39,23 @@ func main() {
 			share.ServeSharePage(w, r)
 		}
 	})
+	mux.Handle("/s/", RateLimitMiddleware(limiter)(shareHandler))
 
-	// API routes (auth-protected)
+	// API routes — auth-protected, no rate limit
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/", api.RouteAPI)
-	apiMux.HandleFunc("/api/docs", api.ServeAPIDocs)
+	mux.Handle("/api/", AuthMiddleware(cfg.AdminToken)(apiMux))
 
-	// Wrap API routes with auth middleware
-	apiHandler := AuthMiddleware(cfg.AdminToken)(apiMux)
-	mux.Handle("/api/", apiHandler)
-
-	// Root redirect to API docs
+	// Root
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			http.Redirect(w, r, "/api/docs", http.StatusFound)
-			return
-		}
 		http.NotFound(w, r)
 	})
 
-	// Apply global middleware
+	// Global middleware (not rate limiting — that's per-route above)
 	var handler http.Handler = mux
 	handler = SecurityHeaders(handler)
 	handler = RecoveryMiddleware(handler)
 	handler = LoggingMiddleware(handler)
-	handler = RateLimitMiddleware(limiter)(handler)
 
 	server := &http.Server{
 		Addr:         cfg.ListenAddr,
@@ -89,18 +79,10 @@ func main() {
 	log.Printf("Togos 文件分享服务启动于 %s", cfg.ListenAddr)
 	log.Printf("管理员 Token: %s", cfg.AdminToken)
 	log.Printf("数据目录: %s", cfg.DataDir)
-	log.Printf("API 文档: http://%s/api/docs", localAddr(cfg.ListenAddr))
 
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("服务启动失败: %v", err)
 	}
 
 	log.Println("服务已关闭")
-}
-
-func localAddr(addr string) string {
-	if strings.HasPrefix(addr, ":") {
-		return "localhost" + addr
-	}
-	return addr
 }
