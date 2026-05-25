@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+var version = "dev"
+
 func main() {
 	cfg := ParseConfig()
 
@@ -76,7 +78,7 @@ func main() {
 		server.Shutdown(ctx)
 	}()
 
-	log.Printf("Togos 文件分享服务启动于 %s", cfg.ListenAddr)
+	log.Printf("Togos v%s 文件分享服务启动于 %s", version, cfg.ListenAddr)
 	log.Printf("管理员 Token: %s", cfg.AdminToken)
 	log.Printf("数据目录: %s", cfg.DataDir)
 
