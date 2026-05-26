@@ -137,12 +137,42 @@ Authorization: Bearer <token>
 
 ### GET /api/files/:id — 获取文件详情
 
+返回文件基本信息及关联的分享列表。
+
 ```
 GET /api/files/1
 Authorization: Bearer <token>
 ```
 
-**响应** `200 OK` — 单个文件对象
+**响应** `200 OK`
+
+```json
+{
+  "id": 1,
+  "name": "document.pdf",
+  "size": 102400,
+  "mime_type": "application/pdf",
+  "created_at": "2026-05-25T12:00:00Z",
+  "shares": [
+    {
+      "id": 1,
+      "file_id": 1,
+      "file_name": "document.pdf",
+      "file_size": 102400,
+      "code": "a1b2c3d4",
+      "has_password": true,
+      "max_downloads": 10,
+      "download_count": 3,
+      "expires_at": "1716739200",
+      "created_at": "2026-05-25 12:00:00",
+      "is_active": true,
+      "share_url": "https://share.example.com/s/a1b2c3d4"
+    }
+  ]
+}
+```
+
+`shares` 为文件关联的所有分享列表，包含密码保护、有效期、下载次数限制、已下载次数等信息。无分享时为空数组 `[]`。
 
 **错误** `404` — 文件不存在
 
@@ -241,7 +271,7 @@ PATCH /api/shares/a1b2c3d4
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{"max_downloads": 20, "download_count": 0, "password": "newpass", "expires_in": 86400}
+{"max_downloads": 20, "download_count": 0, "password": "newpass", "expires_in": 86400, "is_active": false}
 ```
 
 **请求体**
@@ -252,6 +282,7 @@ Content-Type: application/json
 | `max_downloads` | int64 | 否 | — | 最大下载次数，负数自动限制为 0 |
 | `download_count` | int64 | 否 | — | 重置已下载计数，负数自动限制为 0 |
 | `expires_in` | int64 | 否 | — | 有效期（秒），相对于更新时刻，0 清除过期时间 |
+| `is_active` | bool | 否 | — | 启用/禁用分享，禁用后页面返回 410 |
 
 **响应** `200 OK` — 返回更新后的分享对象
 

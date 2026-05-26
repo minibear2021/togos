@@ -295,12 +295,47 @@ func (s *Store) ListShares(siteURL string) ([]*Share, error) {
 	return shares, rows.Err()
 }
 
+func (s *Store) GetSharesByFileID(fileID int64, siteURL string) ([]*Share, error) {
+	rows, err := s.db.Query(
+		`SELECT s.id, s.file_id, f.name, f.size, s.code, s.password_hash,
+		        s.max_downloads, s.download_count, s.expires_at, s.created_at, s.is_active,
+		        f.path, f.mime_type
+		 FROM shares s JOIN files f ON s.file_id = f.id
+		 WHERE s.file_id = ?
+		 ORDER BY s.id`, fileID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var shares []*Share
+	for rows.Next() {
+		sh := &Share{}
+		var passwordHash, expiresAt string
+		err := rows.Scan(&sh.ID, &sh.FileID, &sh.FileName, &sh.FileSize, &sh.Code,
+			&passwordHash, &sh.MaxDownloads, &sh.DownloadCount, &expiresAt,
+			&sh.CreatedAt, &sh.IsActive, &sh.filePath, &sh.mimeType)
+		if err != nil {
+			return nil, err
+		}
+		sh.HasPassword = passwordHash != ""
+		sh.passwordHash = passwordHash
+		if expiresAt != "" {
+			sh.ExpiresAt = expiresAt
+		}
+		sh.ShareURL = siteURL + "/s/" + sh.Code
+		shares = append(shares, sh)
+	}
+	return shares, rows.Err()
+}
+
 func (s *Store) DeleteShare(id int64) error {
 	_, err := s.db.Exec("DELETE FROM shares WHERE id = ?", id)
 	return err
 }
 
-func (s *Store) UpdateShare(id int64, password *string, maxDownloads *int64, downloadCount *int64, expiresIn *int64, siteURL string) (*Share, error) {
+func (s *Store) UpdateShare(id int64, password *string, maxDownloads *int64, downloadCount *int64, expiresIn *int64, isActive *bool, siteURL string) (*Share, error) {
 	var sets []string
 	var args []interface{}
 
@@ -336,6 +371,14 @@ func (s *Store) UpdateShare(id int64, password *string, maxDownloads *int64, dow
 		sets = append(sets, "expires_at = ?")
 		args = append(args, expiresAt)
 	}
+	if isActive != nil {
+		active := 0
+		if *isActive {
+			active = 1
+		}
+		sets = append(sets, "is_active = ?")
+		args = append(args, active)
+	}
 
 	if len(sets) == 0 {
 		return nil, fmt.Errorf("no fields to update")
@@ -366,7 +409,7 @@ func (s *Store) DeleteShareByCode(code string) error {
 	return err
 }
 
-func (s *Store) UpdateShareByCode(code string, password *string, maxDownloads *int64, downloadCount *int64, expiresIn *int64, siteURL string) (*Share, error) {
+func (s *Store) UpdateShareByCode(code string, password *string, maxDownloads *int64, downloadCount *int64, expiresIn *int64, isActive *bool, siteURL string) (*Share, error) {
 	var sets []string
 	var args []interface{}
 
@@ -397,10 +440,18 @@ func (s *Store) UpdateShareByCode(code string, password *string, maxDownloads *i
 	if expiresIn != nil {
 		var expiresAt string
 		if *expiresIn > 0 {
-			expiresAt = fmt.Sprintf("%%d", timeNow()+*expiresIn)
+			expiresAt = fmt.Sprintf("%d", timeNow()+*expiresIn)
 		}
 		sets = append(sets, "expires_at = ?")
 		args = append(args, expiresAt)
+	}
+	if isActive != nil {
+		active := 0
+		if *isActive {
+			active = 1
+		}
+		sets = append(sets, "is_active = ?")
+		args = append(args, active)
 	}
 	if len(sets) == 0 {
 		return nil, fmt.Errorf("no fields to update")

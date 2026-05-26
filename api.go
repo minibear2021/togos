@@ -221,7 +221,19 @@ func (h *APIHandler) GetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, f)
+	shares, err := h.store.GetSharesByFileID(id, h.cfg.SiteURL)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "查询分享信息失败"})
+		return
+	}
+	if shares == nil {
+		shares = []*Share{}
+	}
+
+	writeJSON(w, http.StatusOK, struct {
+		*File
+		Shares []*Share `json:"shares"`
+	}{f, shares})
 }
 
 func (h *APIHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
@@ -376,22 +388,23 @@ func (h *APIHandler) UpdateShare(w http.ResponseWriter, r *http.Request) {
 		MaxDownloads  *int64  `json:"max_downloads"`
 		DownloadCount *int64  `json:"download_count"`
 		ExpiresIn     *int64  `json:"expires_in"`
+		IsActive      *bool   `json:"is_active"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式错误，需要 JSON body"})
 		return
 	}
 
-	if req.Password == nil && req.MaxDownloads == nil && req.DownloadCount == nil && req.ExpiresIn == nil {
+	if req.Password == nil && req.MaxDownloads == nil && req.DownloadCount == nil && req.ExpiresIn == nil && req.IsActive == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "至少需要提供一个更新字段"})
 		return
 	}
 
 	var share *Share
 	if code != "" {
-		share, err = h.store.UpdateShareByCode(code, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, h.cfg.SiteURL)
+		share, err = h.store.UpdateShareByCode(code, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, req.IsActive, h.cfg.SiteURL)
 	} else {
-		share, err = h.store.UpdateShare(id, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, h.cfg.SiteURL)
+		share, err = h.store.UpdateShare(id, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, req.IsActive, h.cfg.SiteURL)
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "更新分享失败"})

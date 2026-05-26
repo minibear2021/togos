@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.5 — 2026-05-26
+
+- `GET /api/files/:id` 响应增加 `shares` 字段，展示关联分享的密码、有效期、下载次数信息
+- PATCH 接口新增 `is_active` 字段，支持启用/禁用分享
+
 ## v0.1.4 — 2026-05-26
 
 - API 分享端点支持通过 share code 定位（GET/PATCH/DELETE `/api/shares/:id`）
