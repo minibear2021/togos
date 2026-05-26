@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文件分享 - 错误</title>
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; }
+	body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; }
+	.error-card { background: #fff; border-radius: 12px; padding: 48px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); text-align: center; max-width: 420px; width: 90%; }
+	.error-icon { font-size: 48px; margin-bottom: 16px; }
+	.error-card h2 { color: #333; margin-bottom: 12px; font-size: 20px; }
+	.error-card p { color: #666; font-size: 14px; line-height: 1.6; }
+	.footer { margin-top: 24px; font-size: 12px; color: #bbb; text-align: center; }
+	.footer a { color: #999; text-decoration: none; }
+	.footer a:hover { color: #4f46e5; }
+</style>
+</head>
+<body>
+<div class="error-card">
+	<div class="error-icon">&#x26A0;</div>
+	<h2>无法访问</h2>
+	<p>{{.ErrorMessage}}</p>
+</div>
+<div class="footer"><a href="https://github.com/minibear2021/togos" target="_blank">由 Togos 驱动</a></div>
+</body>
+</html>

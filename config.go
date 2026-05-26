@@ -13,6 +13,7 @@ type Config struct {
 	MaxFileSize int64
 	SiteURL     string
 	AdminToken  string
+	TemplateDir string
 }
 
 func ParseConfig() *Config {
@@ -23,6 +24,7 @@ func ParseConfig() *Config {
 	flag.Int64Var(&cfg.MaxFileSize, "max-file-size", getEnvInt64("MAX_FILE_SIZE", 100), "最大文件大小 (MB)")
 	flag.StringVar(&cfg.SiteURL, "site-url", getEnv("SITE_URL", "http://localhost:8080"), "站点 URL，用于生成分享链接")
 	flag.StringVar(&cfg.AdminToken, "admin-token", getEnv("ADMIN_TOKEN", ""), "管理员 Token (为空则自动生成)")
+	flag.StringVar(&cfg.TemplateDir, "template-dir", getEnv("TEMPLATE_DIR", ""), "自定义模板目录 (为空则使用内置模板)")
 
 	flag.Parse()
 

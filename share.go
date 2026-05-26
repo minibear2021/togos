@@ -2,21 +2,74 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
+type SharePageData struct {
+	FileName           string
+	FileSize           string
+	MimeType           string
+	Code               string
+	HasExpiry          bool
+	ExpiryTime         string
+	ExpiryRemain       string
+	HasLimit           bool
+	MaxDownloads       int64
+	RemainingDownloads int64
+	NeedsPassword      bool
+}
+
+type ErrorPageData struct {
+	ErrorMessage string
+}
+
 type ShareHandler struct {
-	store *Store
-	cfg   *Config
+	store    *Store
+	cfg      *Config
+	pageTpl  *template.Template
+	errorTpl *template.Template
 }
 
 func NewShareHandler(store *Store, cfg *Config) *ShareHandler {
-	return &ShareHandler{store: store, cfg: cfg}
+	sh := &ShareHandler{store: store, cfg: cfg}
+	sh.loadTemplates()
+	return sh
+}
+
+func (h *ShareHandler) loadTemplates() {
+	if h.cfg.TemplateDir == "" {
+		h.pageTpl = template.Must(template.New("").Parse(sharePageTemplate))
+		h.errorTpl = template.Must(template.New("").Parse(sharePageErrorTemplate))
+		return
+	}
+
+	pageFile := filepath.Join(h.cfg.TemplateDir, "page.html")
+	data, err := os.ReadFile(pageFile)
+	if err != nil {
+		log.Printf("无法加载页面模板 %s: %v，使用内置模板", pageFile, err)
+		h.pageTpl = template.Must(template.New("").Parse(sharePageTemplate))
+	} else {
+		h.pageTpl = template.Must(template.New("").Parse(
+			`{{define "page"}}` + string(data) + `{{end}}`))
+	}
+
+	errorFile := filepath.Join(h.cfg.TemplateDir, "error.html")
+	data, err = os.ReadFile(errorFile)
+	if err != nil {
+		log.Printf("无法加载错误模板 %s: %v，使用内置模板", errorFile, err)
+		h.errorTpl = template.Must(template.New("").Parse(sharePageErrorTemplate))
+	} else {
+		h.errorTpl = template.Must(template.New("").Parse(
+			`{{define "error"}}` + string(data) + `{{end}}`))
+	}
 }
 
 // ServeSharePage serves the public share download page.
@@ -29,44 +82,34 @@ func (h *ShareHandler) ServeSharePage(w http.ResponseWriter, r *http.Request) {
 
 	share, err := h.store.GetShareByCode(code, h.cfg.SiteURL)
 	if err != nil || share == nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(sharePageError("分享不存在或已被删除")))
+		h.renderError(w, http.StatusNotFound, "分享不存在或已被删除")
 		return
 	}
 
 	if !share.IsActive {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusGone)
-		w.Write([]byte(sharePageError("该分享已被禁用")))
+		h.renderError(w, http.StatusGone, "该分享已被禁用")
 		return
 	}
 
-	// Check expiration
 	if share.ExpiresAt != "" {
 		expiresUnix, _ := strconv.ParseInt(share.ExpiresAt, 10, 64)
 		if expiresUnix > 0 && time.Now().Unix() > expiresUnix {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(http.StatusGone)
-			w.Write([]byte(sharePageError("该分享已过期")))
+			h.renderError(w, http.StatusGone, "该分享已过期")
 			return
 		}
 	}
 
-	// Check download count
 	if share.MaxDownloads > 0 && share.DownloadCount >= share.MaxDownloads {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusGone)
-		w.Write([]byte(sharePageError("该分享的下载次数已达上限")))
+		h.renderError(w, http.StatusGone, "该分享的下载次数已达上限")
 		return
 	}
 
-	// Get the password cookie to check if already authenticated
 	authCookie, _ := r.Cookie("share_auth_" + code)
 	authenticated := authCookie != nil && h.store.VerifySharePassword(code, authCookie.Value)
 
+	data := h.buildSharePageData(share, authenticated)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(h.buildSharePage(share, authenticated)))
+	h.pageTpl.ExecuteTemplate(w, "page", data)
 }
 
 // ServeShareAction handles password verification and download initiation.
@@ -169,63 +212,38 @@ func (h *ShareHandler) ServeDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildSharePage generates the HTML for the share page.
-func (h *ShareHandler) buildSharePage(share *Share, authenticated bool) string {
-	var bodyHTML string
+func (h *ShareHandler) buildSharePageData(share *Share, authenticated bool) SharePageData {
+	data := SharePageData{
+		FileName:      share.FileName,
+		FileSize:      formatSize(share.FileSize),
+		MimeType:      share.mimeType,
+		Code:          share.Code,
+		NeedsPassword: share.HasPassword && !authenticated,
+	}
 
-	// File info section
-	bodyHTML += fmt.Sprintf(`
-		<div class="file-info">
-			<div class="file-icon">&#x1F4C4;</div>
-			<h2>%s</h2>
-			<p class="file-meta">
-				<span>大小: %s</span>
-				<span>类型: %s</span>
-			</p>
-		</div>`, escHTML(share.FileName), formatSize(share.FileSize), escHTML(share.mimeType))
-
-	// Expiration info
 	if share.ExpiresAt != "" {
 		expiresUnix, _ := strconv.ParseInt(share.ExpiresAt, 10, 64)
 		if expiresUnix > 0 {
 			expTime := time.Unix(expiresUnix, 0)
 			remaining := time.Until(expTime)
-			expireText := ""
+			data.HasExpiry = true
+			data.ExpiryTime = expTime.Format("2006-01-02 15:04:05")
 			if remaining > 0 {
-				expireText = fmt.Sprintf("剩余 %s", formatDuration(remaining))
+				data.ExpiryRemain = "剩余 " + formatDuration(remaining)
 			} else {
-				expireText = "已过期"
+				data.ExpiryRemain = "已过期"
 			}
-			bodyHTML += fmt.Sprintf(`<p class="expire-info">有效期至: %s (%s)</p>`,
-				expTime.Format("2006-01-02 15:04:05"), expireText)
 		}
 	}
 
-	// Download count info
 	if share.MaxDownloads > 0 {
-		remaining := share.MaxDownloads - share.DownloadCount
-		bodyHTML += fmt.Sprintf(`<p class="download-info">剩余下载次数: %d / %d</p>`,
-			remaining, share.MaxDownloads)
+		data.HasLimit = true
+		data.MaxDownloads = share.MaxDownloads
+		data.RemainingDownloads = share.MaxDownloads - share.DownloadCount
 	}
 
-	// Action section
-	if share.HasPassword && !authenticated {
-		bodyHTML += `
-		<div class="password-form">
-			<form method="POST" action="` + escHTML("/s/" + share.Code) + `">
-				<input type="password" name="password" placeholder="请输入提取密码" required autofocus>
-				<button type="submit">验证</button>
-			</form>
-		</div>`
-	} else {
-		bodyHTML += fmt.Sprintf(`
-		<div class="download-section">
-			<a href="%s/download" class="download-btn">下载文件</a>
-		</div>`, escHTML("/s/"+share.Code))
-	}
-
-	return fmt.Sprintf(sharePageTemplate, escHTML(share.FileName), bodyHTML)
+	return data
 }
-
 func extractCode(path string) string {
 	path = strings.TrimPrefix(path, "/s/")
 	path = strings.TrimSuffix(path, "/")
@@ -291,15 +309,6 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%d天%d时", days, hours)
 }
 
-func escHTML(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&#34;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
-}
-
 func serveRangeRequest(w http.ResponseWriter, r *http.Request, file *os.File, fileSize int64) {
 	rangeHeader := r.Header.Get("Range")
 	if !strings.HasPrefix(rangeHeader, "bytes=") {
@@ -336,8 +345,13 @@ func serveRangeRequest(w http.ResponseWriter, r *http.Request, file *os.File, fi
 	io.CopyN(w, file, contentLength)
 }
 
-func sharePageError(message string) string {
-	return fmt.Sprintf(`<!DOCTYPE html>
+func (h *ShareHandler) renderError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	h.errorTpl.ExecuteTemplate(w, "error", ErrorPageData{ErrorMessage: message})
+}
+
+const sharePageErrorTemplate = `{{define "error"}}<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -346,7 +360,7 @@ func sharePageError(message string) string {
 <style>
 	* { margin: 0; padding: 0; box-sizing: border-box; }
 	body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; }
-	.error-card { background: #fff; border-radius: 12px; padding: 48px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); text-align: center; max-width: 420px; width: 90%%; }
+	.error-card { background: #fff; border-radius: 12px; padding: 48px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); text-align: center; max-width: 420px; width: 90%; }
 	.error-icon { font-size: 48px; margin-bottom: 16px; }
 	.error-card h2 { color: #333; margin-bottom: 12px; font-size: 20px; }
 	.error-card p { color: #666; font-size: 14px; line-height: 1.6; }
@@ -359,20 +373,20 @@ func sharePageError(message string) string {
 <div class="error-card">
 	<div class="error-icon">&#x26A0;</div>
 	<h2>无法访问</h2>
-	<p>%s</p>
+	<p>{{.ErrorMessage}}</p>
 </div>
 <div class="footer"><a href="https://github.com/minibear2021/togos" target="_blank">由 Togos 驱动</a></div>
 </body>
-</html>`, escHTML(message))
-}
+</html>
+{{end}}`
 
 // sharePageTemplate is the HTML template for the share download page.
-const sharePageTemplate = `<!DOCTYPE html>
+const sharePageTemplate = `{{define "page"}}<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>%s - 文件分享</title>
+<title>{{.FileName}} - 文件分享</title>
 <style>
 	* { margin: 0; padding: 0; box-sizing: border-box; }
 	body {
@@ -392,7 +406,7 @@ const sharePageTemplate = `<!DOCTYPE html>
 		padding: 40px 32px;
 		box-shadow: 0 2px 24px rgba(0,0,0,0.06);
 		max-width: 440px;
-		width: 100%%;
+		width: 100%;
 		text-align: center;
 	}
 	.file-icon {
@@ -430,7 +444,7 @@ const sharePageTemplate = `<!DOCTYPE html>
 		margin-top: 24px;
 	}
 	.password-form input[type="password"] {
-		width: 100%%;
+		width: 100%;
 		padding: 12px 16px;
 		border: 2px solid #e5e5e5;
 		border-radius: 10px;
@@ -443,7 +457,7 @@ const sharePageTemplate = `<!DOCTYPE html>
 		border-color: #4f46e5;
 	}
 	.password-form button {
-		width: 100%%;
+		width: 100%;
 		margin-top: 12px;
 		padding: 12px;
 		background: #4f46e5;
@@ -499,8 +513,30 @@ const sharePageTemplate = `<!DOCTYPE html>
 </head>
 <body>
 <div class="card">
-	%s
+	<div class="file-info">
+		<div class="file-icon">&#x1F4C4;</div>
+		<h2>{{.FileName}}</h2>
+		<p class="file-meta">
+			<span>大小: {{.FileSize}}</span>
+			<span>类型: {{.MimeType}}</span>
+		</p>
+	</div>
+	{{if .HasExpiry}}<p class="expire-info">有效期至: {{.ExpiryTime}} ({{.ExpiryRemain}})</p>{{end}}
+	{{if .HasLimit}}<p class="download-info">剩余下载次数: {{.RemainingDownloads}} / {{.MaxDownloads}}</p>{{end}}
+	{{if .NeedsPassword}}
+	<div class="password-form">
+		<form method="POST" action="/s/{{.Code}}">
+			<input type="password" name="password" placeholder="请输入提取密码" required autofocus>
+			<button type="submit">验证</button>
+		</form>
+	</div>
+	{{else}}
+	<div class="download-section">
+		<a href="/s/{{.Code}}/download" class="download-btn">下载文件</a>
+	</div>
+	{{end}}
 </div>
-	<div class="footer"><a href="https://github.com/minibear2021/togos" target="_blank">由 Togos 驱动</a></div>
+<div class="footer"><a href="https://github.com/minibear2021/togos" target="_blank">由 Togos 驱动</a></div>
 </body>
-</html>`
+</html>
+{{end}}`

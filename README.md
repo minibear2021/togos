@@ -82,6 +82,187 @@ curl -H "Authorization: Bearer <token>" \
 # 3. 将返回的 share_url 发给对方即可
 ```
 
+## CI/CD 集成
+
+Togos 专为自动化流水线设计，所有管理操作通过 REST API 完成，无需图形界面。典型的集成流程只有三步：
+
+> 构建产物 → 上传并创建分享链接 → 传递给下游
+
+### 场景一：GitHub Actions 构建产物分发给 QA
+
+```yaml
+# .github/workflows/release.yml
+- name: Upload to Togos and share
+  run: |
+    # 上传 APK
+    RESP=$(curl -s -X POST "$TOGOS_URL/api/files" \
+      -H "Authorization: Bearer $TOGOS_TOKEN" \
+      -F "file=@app-release.apk")
+    FILE_ID=$(echo "$RESP" | jq -r '.id')
+
+    # 创建分享：7天有效，限制 50 次下载，带密码保护
+    SHARE=$(curl -s -X POST "$TOGOS_URL/api/shares" \
+      -H "Authorization: Bearer $TOGOS_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"file_id\": $FILE_ID,
+        \"password\": \"${{ secrets.SHARE_PASSWORD }}\",
+        \"max_downloads\": 50,
+        \"expires_in\": 604800
+      }")
+    SHARE_URL=$(echo "$SHARE" | jq -r '.share_url')
+
+    # 写入构建摘要，QA 可直接点击下载
+    echo "📦 [Android 测试包]($SHARE_URL) | 密码: \`${{ secrets.SHARE_PASSWORD }}\`" \
+      >> $GITHUB_STEP_SUMMARY
+```
+
+### 场景二：多平台构建产物汇总
+
+```yaml
+# 矩阵构建后用一个 Job 汇总所有产物链接
+summary:
+  needs: build
+  runs-on: ubuntu-latest
+  steps:
+    - name: Generate download summary
+      run: |
+        echo "## 🚀 构建完成 (${{ github.ref_name }})" >> $GITHUB_STEP_SUMMARY
+        echo "| 平台 | 下载 |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+
+        for PLATFORM in linux-amd64 darwin-arm64 windows-amd64; do
+          RESP=$(curl -s -X POST "$TOGOS_URL/api/files" \
+            -H "Authorization: Bearer $TOGOS_TOKEN" \
+            -F "file=@togos-$PLATFORM.tar.gz")
+          FILE_ID=$(echo "$RESP" | jq -r '.id')
+
+          SHARE=$(curl -s -X POST "$TOGOS_URL/api/shares" \
+            -H "Authorization: Bearer $TOGOS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"file_id\":$FILE_ID,\"expires_in\":259200}")
+          URL=$(echo "$SHARE" | jq -r '.share_url')
+
+          echo "| $PLATFORM | [$URL]($URL) |" >> $GITHUB_STEP_SUMMARY
+        done
+```
+
+### 场景三：CI 上传，通过 PATCH 动态调整访问策略
+
+构建产物在 CI 中上传后，可以根据审批流程动态调整分享策略：
+
+```bash
+# CI 中：上传并设为初始不可访问
+SHARE=$(curl -s -X POST "$TOGOS_URL/api/shares" \
+  -H "Authorization: Bearer $TOGOS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"file_id\":123,\"max_downloads\":200,\"is_active\":false}")
+CODE=$(echo "$SHARE" | jq -r '.code')
+# 分享码通过通知（邮件/Slack）发送给审批人
+
+# 审批通过后：启用分享并设置 24 小时有效期
+curl -X PATCH "$TOGOS_URL/api/shares/$CODE" \
+  -H "Authorization: Bearer $TOGOS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"is_active":true,"expires_in":86400}'
+
+# 审批拒绝后：删除分享
+curl -X DELETE "$TOGOS_URL/api/shares/$CODE" \
+  -H "Authorization: Bearer $TOGOS_TOKEN"
+```
+
+### 场景四：浏览器端自动打包分享
+
+配合 GitHub Actions 的 `workflow_dispatch`，在浏览器中一键触发构建，产物自动上传并通过分享链接返回：
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '要构建的分支'
+        required: true
+        default: 'main'
+
+jobs:
+  build-and-share:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Build and share
+        run: |
+          npm run build
+
+          RESP=$(curl -s -X POST "$TOGOS_URL/api/files" \
+            -H "Authorization: Bearer $TOGOS_TOKEN" \
+            -F "file=@dist/bundle.zip")
+          FILE_ID=$(echo "$RESP" | jq -r '.id')
+
+          SHARE=$(curl -s -X POST "$TOGOS_URL/api/shares" \
+            -H "Authorization: Bearer $TOGOS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"file_id\":$FILE_ID,\"expires_in\":3600,\"max_downloads\":10}")
+          URL=$(echo "$SHARE" | jq -r '.share_url')
+
+          echo "✅ 构建完成，1小时内有效: $URL" >> $GITHUB_STEP_SUMMARY
+```
+
+### 与 GitLab CI / Jenkins 集成
+
+原理相同，只需在对应的 pipeline 步骤中调用 curl 操作 Togos API：
+
+```yaml
+# GitLab CI 示例
+upload_to_togos:
+  stage: deploy
+  script:
+    - |
+      RESP=$(curl -s -X POST "$TOGOS_URL/api/files" \
+        -H "Authorization: Bearer $TOGOS_TOKEN" \
+        -F "file=@build/output.zip")
+      FILE_ID=$(echo "$RESP" | jq -r '.id')
+      SHARE=$(curl -s -X POST "$TOGOS_URL/api/shares" \
+        -H "Authorization: Bearer $TOGOS_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"file_id\":$FILE_ID,\"expires_in\":86400}")
+      echo "Share URL: $(echo "$SHARE" | jq -r '.share_url')"
+```
+
+```groovy
+// Jenkins Pipeline 示例
+stage('Upload to Togos') {
+    steps {
+        script {
+            def resp = sh(script: """
+                curl -s -X POST "${TOGOS_URL}/api/files" \
+                  -H "Authorization: Bearer ${TOGOS_TOKEN}" \
+                  -F "file=@target/app.jar"
+            """, returnStdout: true).trim()
+            def fileId = readJSON(text: resp).id
+            def share = sh(script: """
+                curl -s -X POST "${TOGOS_URL}/api/shares" \
+                  -H "Authorization: Bearer ${TOGOS_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d '{"file_id":${fileId},"expires_in":86400,"max_downloads":100}'
+            """, returnStdout: true).trim()
+            def shareUrl = readJSON(text: share).share_url
+            echo "📦 构建产物: ${shareUrl}"
+        }
+    }
+}
+```
+
+### 安全实践
+
+- **Token 管理**：将 `TOGOS_TOKEN` 存入 CI 的 Secrets（GitHub Actions Secrets / GitLab CI Variables），禁止硬编码
+- **时效控制**：CI 构建产物通常只临时分发，建议设置较短过期时间（1-24 小时）
+- **下载限制**：限制下载次数可防止链接被恶意放大传播
+- **密码保护**：敏感产物建议加密码，密码通过独立渠道（IM/邮件）通知
+- **内网部署**：Togos 支持纯内网环境，无需外部服务依赖
+
 ## 配置参数
 
 | 环境变量 | 命令行参数 | 默认值 | 说明 |
@@ -91,8 +272,20 @@ curl -H "Authorization: Bearer <token>" \
 | `MAX_FILE_SIZE` | `-max-file-size` | `100` | 最大文件大小 (MB) |
 | `SITE_URL` | `-site-url` | `http://localhost:8080` | 站点 URL，用于生成分享链接 |
 | `ADMIN_TOKEN` | `-admin-token` | 自动生成 | 管理员 Token |
+| `TEMPLATE_DIR` | `-template-dir` | （空） | 自定义模板目录，为空则使用内置模板 |
 
 配置文件查找优先级：环境变量 > 命令行参数 > 默认值
+
+### 自定义页面模板
+
+指定 `-template-dir` 后，Togos 从该目录加载模板文件，修改样式无需重新编译：
+
+| 文件 | 说明 | 占位符 |
+|------|------|--------|
+| `page.html` | 正常分享页面 | `%[1]s` 文件名, `%[2]s` 页面主体 |
+| `error.html` | 错误页面（分享不存在/已过期/已禁用/次数用尽） | `%[1]s` 错误消息 |
+
+两个文件均为可选，缺失的模板自动回退到内置默认模板。内置模板位于 `share.go` 的 `sharePageTemplate` / `sharePageErrorTemplate` 常量，可作为自定义模板的起点。
 
 ## API 端点
 
