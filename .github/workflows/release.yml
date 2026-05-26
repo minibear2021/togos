@@ -105,11 +105,11 @@ jobs:
 
             ```bash
             # Linux / macOS
-            chmod +x togos-*
+            chmod +x togos-${{ steps.version.outputs.VERSION }}-<os>-<arch>
             ./togos-${{ steps.version.outputs.VERSION }}-<os>-<arch> -listen :8080
 
             # Windows
-            togos-${{ steps.version.outputs.VERSION }}-windows-amd64.exe -listen :8080
+            togos-${{ steps.version.outputs.VERSION }}-windows-<arch>.exe -listen :8080
             ```
 
             ## 校验
