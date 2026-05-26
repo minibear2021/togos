@@ -278,14 +278,37 @@ stage('Upload to Togos') {
 
 ### 自定义页面模板
 
-指定 `-template-dir` 后，Togos 从该目录加载模板文件，修改样式无需重新编译：
+指定 `-template-dir` 后，Togos 从该目录加载模板文件。模板使用 Go 标准库 `html/template` 语法，自动做 HTML 转义，无需担心 XSS：
 
-| 文件 | 说明 | 占位符 |
-|------|------|--------|
-| `page.html` | 正常分享页面 | `%[1]s` 文件名, `%[2]s` 页面主体 |
-| `error.html` | 错误页面（分享不存在/已过期/已禁用/次数用尽） | `%[1]s` 错误消息 |
+```bash
+./togos -template-dir ./my-templates
+```
 
-两个文件均为可选，缺失的模板自动回退到内置默认模板。内置模板位于 `share.go` 的 `sharePageTemplate` / `sharePageErrorTemplate` 常量，可作为自定义模板的起点。
+`my-templates/` 目录下放两个文件（均为可选）：
+
+| 文件 | 说明 | 数据 |
+|------|------|------|
+| `page.html` | 正常分享页面 | `{{.FileName}}` `{{.FileSize}}` `{{.MimeType}}` `{{.Code}}` `{{.HasExpiry}}` `{{.ExpiryTime}}` `{{.ExpiryRemain}}` `{{.HasLimit}}` `{{.MaxDownloads}}` `{{.RemainingDownloads}}` `{{.NeedsPassword}}` |
+| `error.html` | 错误页面 | `{{.ErrorMessage}}` |
+
+条件渲染示例（`page.html` 关键结构）：
+```html
+<h2>{{.FileName}}</h2>
+<span>大小: {{.FileSize}}</span>
+<span>类型: {{.MimeType}}</span>
+{{if .HasExpiry}}<p>有效期至: {{.ExpiryTime}} ({{.ExpiryRemain}})</p>{{end}}
+{{if .HasLimit}}<p>剩余下载次数: {{.RemainingDownloads}} / {{.MaxDownloads}}</p>{{end}}
+{{if .NeedsPassword}}
+<form method="POST" action="/s/{{.Code}}">
+  <input type="password" name="password" placeholder="请输入提取密码" required>
+  <button type="submit">验证</button>
+</form>
+{{else}}
+<a href="/s/{{.Code}}/download" class="download-btn">下载文件</a>
+{{end}}
+```
+
+完整内置模板见 [`templates/`](templates/) 目录，可直接复制到自定义目录后修改。缺失的文件自动回退到内置模板。
 
 ## API 端点
 
