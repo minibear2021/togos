@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.1 — 2026-05-26
+
+- Docker 支持：Dockerfile、docker-compose.yml、CI 自动推送镜像到 GHCR
+- CI 构建矩阵新增 Windows arm64
+- 版本号编译注入，启动日志显示版本
+- 测试脚本覆盖 42 个测试用例
+
 ## v0.1.0 — 2026-05-26
 
 首个正式版本。
