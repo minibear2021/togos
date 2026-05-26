@@ -228,6 +228,36 @@ Authorization: Bearer <token>
 
 **错误** `404` — 分享不存在
 
+### PATCH /api/shares/:id — 更新分享策略
+
+更新分享的访问策略（密码、有效期、下载次数），所有字段可选，未提供的字段保持不变。
+
+```
+PATCH /api/shares/1
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"max_downloads": 20, "download_count": 0, "password": "newpass", "expires_in": 86400}
+```
+
+**请求体**
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| `password` | string | 否 | — | 新密码，空字符串 `""` 清除密码 |
+| `max_downloads` | int64 | 否 | — | 最大下载次数，负数自动限制为 0 |
+| `download_count` | int64 | 否 | — | 重置已下载计数，负数自动限制为 0 |
+| `expires_in` | int64 | 否 | — | 有效期（秒），0 清除过期时间 |
+
+**响应** `200 OK` — 返回更新后的分享对象
+
+**错误**
+
+| 状态码 | 说明 |
+|--------|------|
+| 400 | 无效 ID、JSON 格式错误、未提供任何更新字段 |
+| 404 | 分享不存在 |
+
 ### DELETE /api/shares/:id — 删除分享
 
 ```

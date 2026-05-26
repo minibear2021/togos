@@ -354,6 +354,42 @@ func (h *APIHandler) DeleteShare(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "分享已删除"})
 }
 
+func (h *APIHandler) UpdateShare(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.URL.Path, "/api/shares/")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "无效的分享 ID"})
+		return
+	}
+
+	var req struct {
+		Password      *string `json:"password"`
+		MaxDownloads  *int64  `json:"max_downloads"`
+		DownloadCount *int64  `json:"download_count"`
+		ExpiresIn     *int64  `json:"expires_in"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求格式错误，需要 JSON body"})
+		return
+	}
+
+	if req.Password == nil && req.MaxDownloads == nil && req.DownloadCount == nil && req.ExpiresIn == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "至少需要提供一个更新字段"})
+		return
+	}
+
+	share, err := h.store.UpdateShare(id, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, h.cfg.SiteURL)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "更新分享失败"})
+		return
+	}
+	if share == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "分享不存在"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, share)
+}
+
 // RouteAPI dispatches API requests to the appropriate handler.
 func (h *APIHandler) RouteAPI(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
@@ -373,6 +409,8 @@ func (h *APIHandler) RouteAPI(w http.ResponseWriter, r *http.Request) {
 		h.ListShares(w, r)
 	case path == "/api/shares" && r.Method == http.MethodPost:
 		h.CreateShare(w, r)
+	case matchPrefix(path, "/api/shares/") && r.Method == http.MethodPatch:
+		h.UpdateShare(w, r)
 	case matchPrefix(path, "/api/shares/") && r.Method == http.MethodGet:
 		h.GetShare(w, r)
 	case matchPrefix(path, "/api/shares/") && r.Method == http.MethodDelete:

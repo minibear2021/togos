@@ -300,6 +300,67 @@ func (s *Store) DeleteShare(id int64) error {
 	return err
 }
 
+func (s *Store) UpdateShare(id int64, password *string, maxDownloads *int64, downloadCount *int64, expiresIn *int64, siteURL string) (*Share, error) {
+	var sets []string
+	var args []interface{}
+
+	if password != nil {
+		passwordHash := ""
+		if *password != "" {
+			passwordHash = hashPassword(*password)
+		}
+		sets = append(sets, "password_hash = ?")
+		args = append(args, passwordHash)
+	}
+	if maxDownloads != nil {
+		md := *maxDownloads
+		if md < 0 {
+			md = 0
+		}
+		sets = append(sets, "max_downloads = ?")
+		args = append(args, md)
+	}
+	if downloadCount != nil {
+		dc := *downloadCount
+		if dc < 0 {
+			dc = 0
+		}
+		sets = append(sets, "download_count = ?")
+		args = append(args, dc)
+	}
+	if expiresIn != nil {
+		var expiresAt string
+		if *expiresIn > 0 {
+			expiresAt = fmt.Sprintf("%d", timeNow()+*expiresIn)
+		}
+		sets = append(sets, "expires_at = ?")
+		args = append(args, expiresAt)
+	}
+
+	if len(sets) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	args = append(args, id)
+	res, err := s.db.Exec(
+		"UPDATE shares SET "+strings.Join(sets, ", ")+" WHERE id = ?",
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, nil
+	}
+
+	return s.GetShare(id, siteURL)
+}
+
 func (s *Store) IncrementDownloadCount(code string) error {
 	_, err := s.db.Exec(
 		"UPDATE shares SET download_count = download_count + 1 WHERE code = ?",
