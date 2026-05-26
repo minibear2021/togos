@@ -106,13 +106,14 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
 
   release:
-    needs: build
+    needs: [build, docker]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: togos-*
           merge-multiple: true
 
       - name: List artifacts
