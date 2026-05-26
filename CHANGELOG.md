@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.2 — 2026-05-26
+
+- 修复下载端点错误返回裸 JSON 的问题，改为重定向到 HTML 错误页面
+- "由 Togos 驱动" 信息移至页面层级，确保所有状态可见
+- 添加 GitHub 项目链接到页脚
+
 ## v0.1.1 — 2026-05-26
 
 - Docker 支持：Dockerfile、docker-compose.yml、CI 自动推送镜像到 GHCR

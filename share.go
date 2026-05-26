@@ -123,22 +123,22 @@ func (h *ShareHandler) ServeDownload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Validate share
+	// Validate share — redirect to share page for HTML error display
 	if !share.IsActive {
-		writeJSON(w, http.StatusGone, map[string]string{"error": "分享已被禁用"})
+		http.Redirect(w, r, "/s/"+code, http.StatusFound)
 		return
 	}
 
 	if share.ExpiresAt != "" {
 		expiresUnix, _ := strconv.ParseInt(share.ExpiresAt, 10, 64)
 		if expiresUnix > 0 && time.Now().Unix() > expiresUnix {
-			writeJSON(w, http.StatusGone, map[string]string{"error": "分享已过期"})
+			http.Redirect(w, r, "/s/"+code, http.StatusFound)
 			return
 		}
 	}
 
 	if share.MaxDownloads > 0 && share.DownloadCount >= share.MaxDownloads {
-		writeJSON(w, http.StatusGone, map[string]string{"error": "下载次数已达上限"})
+		http.Redirect(w, r, "/s/"+code, http.StatusFound)
 		return
 	}
 
@@ -345,11 +345,14 @@ func sharePageError(message string) string {
 <title>文件分享 - 错误</title>
 <style>
 	* { margin: 0; padding: 0; box-sizing: border-box; }
-	body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+	body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; }
 	.error-card { background: #fff; border-radius: 12px; padding: 48px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); text-align: center; max-width: 420px; width: 90%%; }
 	.error-icon { font-size: 48px; margin-bottom: 16px; }
 	.error-card h2 { color: #333; margin-bottom: 12px; font-size: 20px; }
 	.error-card p { color: #666; font-size: 14px; line-height: 1.6; }
+	.footer { margin-top: 24px; font-size: 12px; color: #bbb; text-align: center; }
+	.footer a { color: #999; text-decoration: none; }
+	.footer a:hover { color: #4f46e5; }
 </style>
 </head>
 <body>
@@ -358,6 +361,7 @@ func sharePageError(message string) string {
 	<h2>无法访问</h2>
 	<p>%s</p>
 </div>
+<div class="footer"><a href="https://github.com/minibear2021/togos" target="_blank">由 Togos 驱动</a></div>
 </body>
 </html>`, escHTML(message))
 }
@@ -376,6 +380,7 @@ const sharePageTemplate = `<!DOCTYPE html>
 		background: #f7f8fa;
 		color: #333;
 		display: flex;
+		flex-direction: column;
 		justify-content: center;
 		align-items: center;
 		min-height: 100vh;
@@ -483,12 +488,19 @@ const sharePageTemplate = `<!DOCTYPE html>
 		font-size: 12px;
 		color: #bbb;
 	}
+	.footer a {
+		color: #999;
+		text-decoration: none;
+	}
+	.footer a:hover {
+		color: #4f46e5;
+	}
 </style>
 </head>
 <body>
 <div class="card">
 	%s
-	<div class="footer">由 Togos 驱动</div>
 </div>
+	<div class="footer"><a href="https://github.com/minibear2021/togos" target="_blank">由 Togos 驱动</a></div>
 </body>
 </html>`
