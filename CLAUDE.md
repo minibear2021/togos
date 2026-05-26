@@ -74,6 +74,14 @@ README.md       — 项目说明
 kill %1
 ```
 
+### 发布流程
+
+1. 更新 `CHANGELOG.md` 添加新版本条目
+2. 提交所有变更: `git add <files> CHANGELOG.md && git commit -m '...'`
+3. 打 tag 推送触发 CI: `git tag -a vX.Y.Z -m 'Release vX.Y.Z: ...' && git push origin vX.Y.Z`
+4. 推送代码: `git push`
+5. GitHub Actions 由 `v*` tag 触发，自动编译多平台二进制并创建 Release
+
 ### 修改代码注意事项
 - 编译必须 `CGO_ENABLED=0`，否则会尝试用 CGo SQLite 驱动
 - 分享页 HTML 模板 `sharePageTemplate` 在 `share.go` 末尾
