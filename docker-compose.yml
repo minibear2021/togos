@@ -1,0 +1,13 @@
+services:
+  togos:
+    image: ghcr.io/minibear2021/togos:latest
+    container_name: togos
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - SITE_URL=${SITE_URL:-http://localhost:8080}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-100}
+    restart: unless-stopped

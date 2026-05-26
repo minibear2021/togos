@@ -1,0 +1,7 @@
+.git
+data
+*.exe
+togos
+togos-*
+.DS_Store
+.env

@@ -14,6 +14,26 @@
 
 ## 快速开始
 
+### Docker（推荐）
+
+```bash
+# 拉取镜像
+docker pull ghcr.io/minibear2021/togos:latest
+
+# 运行
+docker run -d -p 8080:8080 -v ./data:/data ghcr.io/minibear2021/togos:latest
+```
+
+或使用 docker-compose：
+
+```bash
+docker compose up -d
+```
+
+### 二进制文件
+
+从 [Releases](https://github.com/minibear2021/togos/releases) 下载对应平台的二进制文件直接运行。
+
 ### 编译
 
 ```bash
