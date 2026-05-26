@@ -187,7 +187,7 @@ Content-Type: application/json
 | `file_id` | int64 | 是 | — | 要分享的文件 ID |
 | `password` | string | 否 | 空 | 提取密码，空则无密码 |
 | `max_downloads` | int64 | 否 | 0 | 最大下载次数，0 不限 |
-| `expires_in` | int64 | 否 | 0 | 有效期（秒），0 永久 |
+| `expires_in` | int64 | 否 | 0 | 有效期（秒），相对于创建时刻，0 永久 |
 
 **响应** `201 Created`
 
@@ -219,8 +219,11 @@ Authorization: Bearer <token>
 
 ### GET /api/shares/:id — 获取分享详情
 
+`:id` 可以是数字 ID 或 8 位分享码。
+
 ```
 GET /api/shares/1
+GET /api/shares/a1b2c3d4
 Authorization: Bearer <token>
 ```
 
@@ -230,10 +233,11 @@ Authorization: Bearer <token>
 
 ### PATCH /api/shares/:id — 更新分享策略
 
-更新分享的访问策略（密码、有效期、下载次数），所有字段可选，未提供的字段保持不变。
+`:id` 可以是数字 ID 或 8 位分享码。更新分享的访问策略（密码、有效期、下载次数），所有字段可选，未提供的字段保持不变。
 
 ```
 PATCH /api/shares/1
+PATCH /api/shares/a1b2c3d4
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -247,7 +251,7 @@ Content-Type: application/json
 | `password` | string | 否 | — | 新密码，空字符串 `""` 清除密码 |
 | `max_downloads` | int64 | 否 | — | 最大下载次数，负数自动限制为 0 |
 | `download_count` | int64 | 否 | — | 重置已下载计数，负数自动限制为 0 |
-| `expires_in` | int64 | 否 | — | 有效期（秒），0 清除过期时间 |
+| `expires_in` | int64 | 否 | — | 有效期（秒），相对于更新时刻，0 清除过期时间 |
 
 **响应** `200 OK` — 返回更新后的分享对象
 
@@ -260,8 +264,11 @@ Content-Type: application/json
 
 ### DELETE /api/shares/:id — 删除分享
 
+`:id` 可以是数字 ID 或 8 位分享码。
+
 ```
 DELETE /api/shares/1
+DELETE /api/shares/a1b2c3d4
 Authorization: Bearer <token>
 ```
 

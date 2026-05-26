@@ -315,13 +315,18 @@ func (h *APIHandler) GetShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := parseID(r.URL.Path, "/api/shares/")
+	id, code, err := resolveShareParam(r.URL.Path, "/api/shares/")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "无效的分享 ID"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "无效的分享标识，需要数字 ID 或 8 位分享码"})
 		return
 	}
 
-	share, err := h.store.GetShare(id, h.cfg.SiteURL)
+	var share *Share
+	if code != "" {
+		share, err = h.store.GetShareByCode(code, h.cfg.SiteURL)
+	} else {
+		share, err = h.store.GetShare(id, h.cfg.SiteURL)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "查询分享失败"})
 		return
@@ -340,13 +345,18 @@ func (h *APIHandler) DeleteShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := parseID(r.URL.Path, "/api/shares/")
+	id, code, err := resolveShareParam(r.URL.Path, "/api/shares/")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "无效的分享 ID"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "无效的分享标识，需要数字 ID 或 8 位分享码"})
 		return
 	}
 
-	if err := h.store.DeleteShare(id); err != nil {
+	if code != "" {
+		err = h.store.DeleteShareByCode(code)
+	} else {
+		err = h.store.DeleteShare(id)
+	}
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "删除分享失败"})
 		return
 	}
@@ -355,9 +365,9 @@ func (h *APIHandler) DeleteShare(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) UpdateShare(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r.URL.Path, "/api/shares/")
+	id, code, err := resolveShareParam(r.URL.Path, "/api/shares/")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "无效的分享 ID"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "无效的分享标识，需要数字 ID 或 8 位分享码"})
 		return
 	}
 
@@ -377,7 +387,12 @@ func (h *APIHandler) UpdateShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	share, err := h.store.UpdateShare(id, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, h.cfg.SiteURL)
+	var share *Share
+	if code != "" {
+		share, err = h.store.UpdateShareByCode(code, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, h.cfg.SiteURL)
+	} else {
+		share, err = h.store.UpdateShare(id, req.Password, req.MaxDownloads, req.DownloadCount, req.ExpiresIn, h.cfg.SiteURL)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "更新分享失败"})
 		return
@@ -432,6 +447,32 @@ func parseID(path, prefix string) (int64, error) {
 	idStr := strings.TrimPrefix(path, prefix)
 	idStr = strings.TrimSuffix(idStr, "/")
 	return strconv.ParseInt(idStr, 10, 64)
+}
+
+func validateCode(code string) bool {
+	if len(code) != 8 {
+		return false
+	}
+	for _, c := range code {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveShareParam extracts a share identifier from the URL path.
+// Returns (id, "", nil) for numeric IDs, or (0, code, nil) for share codes.
+func resolveShareParam(path, prefix string) (int64, string, error) {
+	param := strings.TrimPrefix(path, prefix)
+	param = strings.TrimSuffix(param, "/")
+	if id, err := strconv.ParseInt(param, 10, 64); err == nil {
+		return id, "", nil
+	}
+	if validateCode(param) {
+		return 0, param, nil
+	}
+	return 0, "", fmt.Errorf("无效的分享标识")
 }
 
 func matchPrefix(path, prefix string) bool {

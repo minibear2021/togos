@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.4 — 2026-05-26
+
+- API 分享端点支持通过 share code 定位（GET/PATCH/DELETE `/api/shares/:id`）
+- 分享码生成规则改为必须包含至少一个字母和一个数字
+
 ## v0.1.3 — 2026-05-26
 
 - 新增 `PATCH /api/shares/:id` 接口，支持更新分享密码、有效期、下载次数

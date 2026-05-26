@@ -361,6 +361,68 @@ func (s *Store) UpdateShare(id int64, password *string, maxDownloads *int64, dow
 	return s.GetShare(id, siteURL)
 }
 
+func (s *Store) DeleteShareByCode(code string) error {
+	_, err := s.db.Exec("DELETE FROM shares WHERE code = ?", code)
+	return err
+}
+
+func (s *Store) UpdateShareByCode(code string, password *string, maxDownloads *int64, downloadCount *int64, expiresIn *int64, siteURL string) (*Share, error) {
+	var sets []string
+	var args []interface{}
+
+	if password != nil {
+		passwordHash := ""
+		if *password != "" {
+			passwordHash = hashPassword(*password)
+		}
+		sets = append(sets, "password_hash = ?")
+		args = append(args, passwordHash)
+	}
+	if maxDownloads != nil {
+		md := *maxDownloads
+		if md < 0 {
+			md = 0
+		}
+		sets = append(sets, "max_downloads = ?")
+		args = append(args, md)
+	}
+	if downloadCount != nil {
+		dc := *downloadCount
+		if dc < 0 {
+			dc = 0
+		}
+		sets = append(sets, "download_count = ?")
+		args = append(args, dc)
+	}
+	if expiresIn != nil {
+		var expiresAt string
+		if *expiresIn > 0 {
+			expiresAt = fmt.Sprintf("%%d", timeNow()+*expiresIn)
+		}
+		sets = append(sets, "expires_at = ?")
+		args = append(args, expiresAt)
+	}
+	if len(sets) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+	args = append(args, code)
+	res, err := s.db.Exec(
+		"UPDATE shares SET "+strings.Join(sets, ", ")+" WHERE code = ?",
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, nil
+	}
+	return s.GetShareByCode(code, siteURL)
+}
+
 func (s *Store) IncrementDownloadCount(code string) error {
 	_, err := s.db.Exec(
 		"UPDATE shares SET download_count = download_count + 1 WHERE code = ?",
@@ -414,15 +476,23 @@ func verifyPassword(password, hash string) bool {
 
 func generateCode(length int) (string, error) {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+	const letters = "abcdefghijklmnopqrstuvwxyz"
+	const digits = "0123456789"
+
 	result := make([]byte, length)
-	for i := range result {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-		if err != nil {
-			return "", err
+	for {
+		for i := range result {
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+			if err != nil {
+				return "", err
+			}
+			result[i] = chars[n.Int64()]
 		}
-		result[i] = chars[n.Int64()]
+		s := string(result)
+		if strings.ContainsAny(s, letters) && strings.ContainsAny(s, digits) {
+			return s, nil
+		}
 	}
-	return string(result), nil
 }
 
 func generateToken(length int) string {
