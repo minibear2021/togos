@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.8 — 2026-05-26
+
+- Docker 镜像内置默认模板，支持通过 volume 挂载自定义模板
+
+## v0.1.7 — 2026-05-26
+
+- 更新页面模板文档，改用 `html/template` 语法示例
+- 修复 CI release 下载产物偶发超时
+
 ## v0.1.6 — 2026-05-26
 
 - 模板引擎升级：`fmt.Sprintf` → `html/template`，全部 HTML 逻辑移入模板文件

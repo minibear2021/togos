@@ -6,8 +6,10 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
+      - ./templates:/app/templates:ro
     environment:
       - SITE_URL=${SITE_URL:-http://localhost:8080}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
       - MAX_FILE_SIZE=${MAX_FILE_SIZE:-100}
+      - TEMPLATE_DIR=/app/templates
     restart: unless-stopped

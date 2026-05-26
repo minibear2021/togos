@@ -8,6 +8,8 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o togos 
 
 FROM scratch
 COPY --from=build /app/togos /togos
+COPY templates/ /app/templates/
 VOLUME /data
 EXPOSE 8080
-ENTRYPOINT ["/togos", "-data-dir", "/data"]
+ENV TEMPLATE_DIR=/app/templates
+ENTRYPOINT ["/togos", "-data-dir", "/data", "-template-dir", "/app/templates"]
